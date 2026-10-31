@@ -11,6 +11,7 @@ import jakarta.persistence.Enumerated;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
+import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
 
 /**
@@ -35,10 +36,11 @@ public class Agendamento {
     private DadosCliente cliente;
 
     @ManyToOne
+    @JoinColumn(name = "procedimento_id", nullable = false)
     private Procedimento procedimento;
 
     @Enumerated (EnumType.STRING)
-    @Column (nullable = false)
+    @Column (name = "status",nullable = false)
     private EstadoAgendamento estado;
 
     /* ===== MÉTODOS ===== */

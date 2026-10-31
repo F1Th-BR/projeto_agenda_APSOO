@@ -3,6 +3,9 @@ package com.trabalhoapsoo.sai.model;
 import java.math.BigDecimal;
 import java.time.Duration;
 
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
+
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.GeneratedValue;
@@ -26,6 +29,7 @@ public class Procedimento {
     @Column (nullable = false)
     private String nomeProcedimento;
 
+    @JdbcTypeCode (SqlTypes.BIGINT)
     @Column (nullable = false)
     private Duration duracaoProcedimento;
 
