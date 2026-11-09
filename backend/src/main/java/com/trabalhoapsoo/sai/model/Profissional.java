@@ -24,7 +24,7 @@ public class Profissional {
     private Long id; // (Para BD) identificador da linha da tabela
     
     @Column (unique = true, nullable = false)
-    private String usuario; // Nome de usuário do(a) profissional.
+    private String email; // email do(a) profissional.
     
     // IMPORTANT: NÃO GUARDAR SENHA COMO TEXTO PURO!!!
     @Column (nullable = false)
@@ -41,11 +41,11 @@ public class Profissional {
     /**
      * Construtor da classe
      * 
-     * @param nomeUsuario
+     * @param enderecoEmail
      * @param senhaHash
      */
-    public Profissional(String nomeUsuario, String senhaHash) {
-        this.usuario = nomeUsuario;
+    public Profissional(String enderecoEmail, String senhaHash) {
+        this.email = enderecoEmail;
         this.senhaHash = senhaHash;
     }
 
@@ -65,8 +65,8 @@ public class Profissional {
      * 
      * @return nome de usuário.
      */
-    public String getUsuario() {
-        return usuario;
+    public String getEmail() {
+        return email;
     }
 
     /**

@@ -1,0 +1,1 @@
+ALTER TABLE profissional RENAME COLUMN usuario TO email;

@@ -1,20 +1,26 @@
 package com.trabalhoapsoo.sai.service;
 
+import java.math.BigDecimal;
+import java.time.Duration;
+import java.util.List;
+
+import com.trabalhoapsoo.sai.exceptions.ConflitoException;
 import com.trabalhoapsoo.sai.exceptions.RecursoNaoEncontradoException;
 import com.trabalhoapsoo.sai.model.Procedimento;
 import com.trabalhoapsoo.sai.model.Profissional;
+import com.trabalhoapsoo.sai.repository.AgendamentoRepository;
 import com.trabalhoapsoo.sai.repository.ProcedimentoRepository;
-
-import java.math.BigDecimal;
-import java.time.Duration;
-
+import com.trabalhoapsoo.sai.repository.ProfissionalRepository;
 
 import org.springframework.stereotype.Service;
-
+import org.springframework.transaction.annotation.Transactional;
 
 /**
  * Classe de apoio para gerenciamento dos procedimentos
- * de um profissional
+ * de um profissional.
+ * 
+ * Todos os métodos recebem o id do(a) profissional logado(a) e só
+ * operam sobre procedimentos que pertencem a ele(a) (RNF007).
  * 
  * @author Thiago Feijó de Albuquerque
  */
@@ -22,85 +28,117 @@ import org.springframework.stereotype.Service;
 public class ServicosProcedimento {
     /* ===== ATRIBUTOS ===== */
     // Abstrai a tabela 'procedimento' no BD. Service delega a
-    //  Este repositório (repository) as operações para buscar,
+    // este repositório (repository) as operações para buscar,
     // salvar, e remover um procedimento.
     private final ProcedimentoRepository repository;
 
+    private final ProfissionalRepository profissionalRepository; // para localizar o dono do procedimento
+    private final AgendamentoRepository agendamentoRepository; // para checar se há agendamentos (RF004)
+
     /* ===== MÉTODOS ===== */
-    /* */
-    public ServicosProcedimento(ProcedimentoRepository repository) {
+    /**
+     * Construtor da classe (injeção de dependências pelo Spring)
+     * 
+     * @param repository repositório de procedimentos
+     * @param profissionalRepository repositório de profissionais
+     * @param agendamentoRepository repositório de agendamentos
+     */
+    public ServicosProcedimento(ProcedimentoRepository repository,
+                                ProfissionalRepository profissionalRepository,
+                                AgendamentoRepository agendamentoRepository) {
         this.repository = repository;
+        this.profissionalRepository = profissionalRepository;
+        this.agendamentoRepository = agendamentoRepository;
     }
 
-    // TODO: REVISAR MÉTODOS
     /**
-     * Método para criar um procedimento (RF001)
+     * Método para criar um procedimento (RF002).
+     * O procedimento nasce vinculado a quem o criou (RN01).
      * 
-     * Usa: inserirProcedimento
-     * 
-     * @param nomeProcedimento
-     * @param duracaoProcedimento
-     * @param preco
-     * @param profissional
+     * @param profissionalId id do(a) profissional logado(a)
+     * @param nomeProcedimento nome do procedimento
+     * @param duracaoProcedimento duração do procedimento
+     * @param preco preço do procedimento
+     * @return procedimento salvo
      */
-    public Procedimento criar(String nomeProcedimento, Duration duracaoProcedimento, BigDecimal preco, Profissional profissional) {
-        Procedimento p = new Procedimento(nomeProcedimento, duracaoProcedimento, preco, profissional);
-        return  repository.save(p);
+    @Transactional
+    public Procedimento criar(Long profissionalId, String nomeProcedimento, Duration duracaoProcedimento, BigDecimal preco) {
+        Profissional profissional = profissionalRepository.findById(profissionalId)
+            .orElseThrow(() -> new RecursoNaoEncontradoException("Profissional não encontrado: " + profissionalId));
+        return repository.save(new Procedimento(nomeProcedimento, duracaoProcedimento, preco, profissional));
     }
 
-    /* ===== MÉTODOS DE EDIÇÃO (RF003) ===== */
-    // TODO: achar uma forma melhor de identificar o procedimento. No momento, é feito pelo nome
     /**
-     * Método para atualizar a duração de um procedimento
+     * Método para listar os procedimentos do(a) profissional logado(a).
      * 
+     * @param profissionalId id do(a) profissional logado(a)
+     * @return procedimentos do(a) profissional
+     */
+    @Transactional(readOnly = true)
+    public List<Procedimento> listar(Long profissionalId) {
+        return repository.findByProfissionalId(profissionalId);
+    }
+
+    /**
+     * Método para buscar um procedimento do(a) profissional logado(a).
+     * 
+     * @param profissionalId id do(a) profissional logado(a)
      * @param id id do procedimento no BD
-     * @param novaDuracao
+     * @return procedimento encontrado
+     * @throws RecursoNaoEncontradoException se não existir ou for de outro(a) profissional
      */
-    public Procedimento atualizarDuracao(Long id, Duration novaDuracao) {
-        Procedimento p = buscarID(id);
+    @Transactional(readOnly = true)
+    public Procedimento buscar(Long profissionalId, Long id) {
+        return buscarDoProfissional(profissionalId, id);
+    }
+
+    /**
+     * Método para editar um procedimento (RF003).
+     * Agendamentos já realizados guardam o próprio horário de fim, então
+     * não são afetados pela edição.
+     * 
+     * @param profissionalId id do(a) profissional logado(a)
+     * @param id id do procedimento no BD
+     * @param novoNome novo nome
+     * @param novaDuracao nova duração
+     * @param novoPreco novo preço
+     * @return procedimento atualizado
+     */
+    @Transactional
+    public Procedimento atualizar(Long profissionalId, Long id, String novoNome, Duration novaDuracao, BigDecimal novoPreco) {
+        Procedimento p = buscarDoProfissional(profissionalId, id);
+        p.setNomeProcedimento(novoNome);
         p.setDuracaoProcedimento(novaDuracao);
-        return repository.save(p);
-    }
-
-    /**
-     * Método para atualizar o preço do procedimento
-     * 
-     * @param id id do procedimento no BD
-     * @param novoPreco
-     */
-    public Procedimento atualizarPreco(Long id, BigDecimal novoPreco) {
-        Procedimento p = buscarID(id);
         p.setPreco(novoPreco);
         return repository.save(p);
     }
 
     /**
-     * Método para atualizar o nome do procedimento
+     * Método para remover o procedimento (RF004).
+     * Não permite remover se já existirem agendamentos para ele.
      * 
+     * @param profissionalId id do(a) profissional logado(a)
      * @param id id do procedimento no BD
-     * @param novoNome
+     * @throws ConflitoException se o procedimento possuir agendamentos
      */
-    public Procedimento atualizarNome(Long id, String novoNome) {
-        Procedimento p = buscarID(id);
-        p.setNomeProcedimento(novoNome);
-        return repository.save(p);
-    }
-    /* ===== FIM MÉTODOS DE EDIÇÃO ===== */
-
-    /**
-     * Método para remover o procedimento (RF004) 
-     * 
-     * @param nomeProcedimento
-     */
-    public void remover(Long id) {
-        Procedimento p = buscarID(id);
+    @Transactional
+    public void remover(Long profissionalId, Long id) {
+        Procedimento p = buscarDoProfissional(profissionalId, id);
+        if (agendamentoRepository.existsByProcedimentoId(id)) {
+            throw new ConflitoException("Este procedimento possui agendamentos e não pode ser removido.");
+        }
         repository.delete(p);
     }
 
     /* ===== MÉTODOS PRIVADOS ===== */
-    private Procedimento buscarID(Long id) {
-        return repository.findById(id)
-            .orElseThrow(() -> new RecursoNaoEncontradoException("Procedimento não encontrado: "+ id));
-        
+    // Busca o procedimento e confere o dono. Se for de outro(a) profissional,
+    // devolve "não encontrado" (e não "proibido") para não revelar que ele existe
+    private Procedimento buscarDoProfissional(Long profissionalId, Long id) {
+        Procedimento p = repository.findById(id)
+            .orElseThrow(() -> new RecursoNaoEncontradoException("Procedimento não encontrado: " + id));
+        if (!p.getProfissional().getId().equals(profissionalId)) {
+            throw new RecursoNaoEncontradoException("Procedimento não encontrado: " + id);
+        }
+        return p;
     }
 } // ServicosProcedimento
