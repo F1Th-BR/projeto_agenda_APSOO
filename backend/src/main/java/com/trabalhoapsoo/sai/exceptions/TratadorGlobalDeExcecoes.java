@@ -42,6 +42,17 @@ public class TratadorGlobalDeExcecoes {
     }
 
     /**
+     * Dados que violam uma regra de negócio -> 400.
+     * 
+     * @param e exceção lançada
+     * @return resposta 400
+     */
+    @ExceptionHandler(RequisicaoInvalidaException.class)
+    public ResponseEntity<RespostaErro> tratarRequisicaoInvalida(RequisicaoInvalidaException e) {
+        return montar(HttpStatus.BAD_REQUEST, e.getMessage());
+    }
+
+    /**
      * Login com e-mail ou senha incorretos -> 401.
      * 
      * @param e exceção lançada

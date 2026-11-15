@@ -1,10 +1,11 @@
 HELP.md
 .env
-target/
 logs/
+target/
 .mvn/wrapper/maven-wrapper.jar
 !**/src/main/**/target/
 !**/src/test/**/target/
+.vscode/
 
 ### STS ###
 .apt_generated

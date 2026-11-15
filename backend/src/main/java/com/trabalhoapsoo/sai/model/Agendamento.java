@@ -39,6 +39,12 @@ public class Agendamento {
     @JoinColumn(name = "procedimento_id", nullable = false)
     private Procedimento procedimento;
 
+    // Profissional dono do horário. Derivado do procedimento no construtor e
+    // guardado aqui para o banco impedir sobreposição de horários (V5, RF047)
+    @ManyToOne
+    @JoinColumn(name = "profissional_id", nullable = false)
+    private Profissional profissional;
+
     @Enumerated (EnumType.STRING)
     @Column (name = "status",nullable = false)
     private EstadoAgendamento estado;
@@ -59,6 +65,7 @@ public class Agendamento {
     public Agendamento(String nomeCliente, String telefoneCliente, Procedimento procedimento, LocalDateTime inicioAgendamento) {
         this.cliente = new DadosCliente(nomeCliente, telefoneCliente);
         this.procedimento = procedimento;
+        this.profissional = procedimento.getProfissional();
         this.inicioAgendamento = inicioAgendamento;
         this.fimAgendamento = inicioAgendamento.plus(procedimento.getDuracaoProcedimento());
         this.estado = EstadoAgendamento.AGENDADO;
@@ -117,6 +124,15 @@ public class Agendamento {
      */
     public Procedimento getProcedimento() {
         return procedimento;
+    }
+
+    /**
+     * Método para obter o profissional responsável pelo horário
+     * 
+     * @return profissional dono do agendamento
+     */
+    public Profissional getProfissional() {
+        return profissional;
     }
 
     /**
