@@ -24,4 +24,18 @@ public interface BloqueioRepository extends JpaRepository<Bloqueio, Long> {
      */
     List<Bloqueio> findByProfissionalIdAndFimBloqueioAfterOrderByInicioBloqueioAsc(Long profissionalId, LocalDateTime agora);
 
+    /**
+     * Lista os bloqueios de um(a) profissional que se sobrepõem a um período.
+     * Um bloqueio se sobrepõe quando termina depois do início do período
+     * e começa antes do fim dele.
+     * 
+     * @param profissionalId id do(a) profissional
+     * @param inicioPeriodo início do período
+     * @param fimPeriodo fim do período
+     * @return bloqueios que tocam o período
+     */
+    List<Bloqueio> findByProfissionalIdAndFimBloqueioAfterAndInicioBloqueioBefore(Long profissionalId,
+                                                                                   LocalDateTime inicioPeriodo,
+                                                                                   LocalDateTime fimPeriodo);
+
 } // BloqueioRepository

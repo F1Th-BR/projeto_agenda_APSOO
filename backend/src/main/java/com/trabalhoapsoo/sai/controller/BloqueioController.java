@@ -56,7 +56,8 @@ public class BloqueioController {
             idDoProfissional(jwt),
             requisicao.inicio(),
             requisicao.fim(),
-            requisicao.motivo()));
+            requisicao.motivo(),
+            Boolean.TRUE.equals(requisicao.cancelarAgendamentos())));
     }
 
     /**

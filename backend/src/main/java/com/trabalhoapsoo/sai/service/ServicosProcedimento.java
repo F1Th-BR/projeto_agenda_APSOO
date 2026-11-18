@@ -8,7 +8,7 @@ import com.trabalhoapsoo.sai.exceptions.ConflitoException;
 import com.trabalhoapsoo.sai.exceptions.RecursoNaoEncontradoException;
 import com.trabalhoapsoo.sai.model.Procedimento;
 import com.trabalhoapsoo.sai.model.Profissional;
-import com.trabalhoapsoo.sai.repository.AgendamentoRepository;
+import com.trabalhoapsoo.sai.repository.ProcedimentoLinkRepository;
 import com.trabalhoapsoo.sai.repository.ProcedimentoRepository;
 import com.trabalhoapsoo.sai.repository.ProfissionalRepository;
 
@@ -33,7 +33,7 @@ public class ServicosProcedimento {
     private final ProcedimentoRepository repository;
 
     private final ProfissionalRepository profissionalRepository; // para localizar o dono do procedimento
-    private final AgendamentoRepository agendamentoRepository; // para checar se há agendamentos (RF004)
+    private final ProcedimentoLinkRepository linkRepository; // para checar se está liberado no link de empresa (RF004)
 
     /* ===== MÉTODOS ===== */
     /**
@@ -41,14 +41,14 @@ public class ServicosProcedimento {
      * 
      * @param repository repositório de procedimentos
      * @param profissionalRepository repositório de profissionais
-     * @param agendamentoRepository repositório de agendamentos
+     * @param linkRepository repositório das liberações no link de empresa
      */
     public ServicosProcedimento(ProcedimentoRepository repository,
                                 ProfissionalRepository profissionalRepository,
-                                AgendamentoRepository agendamentoRepository) {
+                                ProcedimentoLinkRepository linkRepository) {
         this.repository = repository;
         this.profissionalRepository = profissionalRepository;
-        this.agendamentoRepository = agendamentoRepository;
+        this.linkRepository = linkRepository;
     }
 
     /**
@@ -76,7 +76,7 @@ public class ServicosProcedimento {
      */
     @Transactional(readOnly = true)
     public List<Procedimento> listar(Long profissionalId) {
-        return repository.findByProfissionalId(profissionalId);
+        return repository.findByProfissionalIdAndAtivoTrue(profissionalId);
     }
 
     /**
@@ -115,19 +115,23 @@ public class ServicosProcedimento {
 
     /**
      * Método para remover o procedimento (RF004).
-     * Não permite remover se já existirem agendamentos para ele.
+     * A remoção é lógica: o procedimento deixa de aparecer e de ser agendável,
+     * mas os agendamentos já feitos continuam apontando para ele.
      * 
      * @param profissionalId id do(a) profissional logado(a)
      * @param id id do procedimento no BD
-     * @throws ConflitoException se o procedimento possuir agendamentos
+     * @throws ConflitoException se o procedimento estiver liberado no link de uma empresa
      */
     @Transactional
     public void remover(Long profissionalId, Long id) {
         Procedimento p = buscarDoProfissional(profissionalId, id);
-        if (agendamentoRepository.existsByProcedimentoId(id)) {
-            throw new ConflitoException("Este procedimento possui agendamentos e não pode ser removido.");
+        // RF004: se está liberado no link de uma empresa, é preciso pedir a ela que o desvincule antes
+        if (linkRepository.existsByProcedimentoIdAndAtivoTrue(id)) {
+            throw new ConflitoException("Este procedimento está liberado no link de uma empresa. "
+                + "Peça à empresa para desvinculá-lo (ou saia da empresa) antes de removê-lo.");
         }
-        repository.delete(p);
+        p.desativar();
+        repository.save(p);
     }
 
     /* ===== MÉTODOS PRIVADOS ===== */
@@ -136,7 +140,7 @@ public class ServicosProcedimento {
     private Procedimento buscarDoProfissional(Long profissionalId, Long id) {
         Procedimento p = repository.findById(id)
             .orElseThrow(() -> new RecursoNaoEncontradoException("Procedimento não encontrado: " + id));
-        if (!p.getProfissional().getId().equals(profissionalId)) {
+        if (!p.isAtivo() || !p.getProfissional().getId().equals(profissionalId)) {
             throw new RecursoNaoEncontradoException("Procedimento não encontrado: " + id);
         }
         return p;

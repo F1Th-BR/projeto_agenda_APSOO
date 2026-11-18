@@ -17,6 +17,7 @@ import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
 
@@ -77,11 +78,13 @@ public class DisponibilidadeController {
      * 
      * @param jwt token do(a) profissional logado(a)
      * @param id id da disponibilidade
+     * @param confirmar true para remover mesmo havendo agendamentos futuros nesse intervalo
      */
     @DeleteMapping("/{id}")
     @ResponseStatus(HttpStatus.NO_CONTENT)
-    public void remover(@AuthenticationPrincipal Jwt jwt, @PathVariable Long id) {
-        servicos.remover(idDoProfissional(jwt), id);
+    public void remover(@AuthenticationPrincipal Jwt jwt, @PathVariable Long id,
+                        @RequestParam(defaultValue = "false") boolean confirmar) {
+        servicos.remover(idDoProfissional(jwt), id, confirmar);
     }
 
     /* ===== MÉTODOS PRIVADOS ===== */

@@ -40,6 +40,11 @@ public class Procedimento {
     @JoinColumn (name = "profissional_id", nullable = false)
     private Profissional profissional;
 
+    // Exclusão lógica (RF004): um procedimento "removido" apenas deixa de estar ativo.
+    // Os agendamentos já realizados continuam apontando para ele
+    @Column (nullable = false)
+    private boolean ativo = true;
+
     /* ===== MÉTODOS ===== */
     /** Construtor vazio exigido pelo Hibernate */
     protected Procedimento() {}
@@ -102,6 +107,23 @@ public class Procedimento {
      */
     public Profissional getProfissional() {
         return profissional;
+    }
+
+    /**
+     * Método para saber se o procedimento está ativo (visível e agendável)
+     * 
+     * @return true se o procedimento está ativo
+     */
+    public boolean isAtivo() {
+        return ativo;
+    }
+
+    /**
+     * Método para remover logicamente o procedimento (RF004).
+     * Ele deixa de aparecer na lista e no link de agendamento.
+     */
+    public void desativar() {
+        this.ativo = false;
     }
 
     /**

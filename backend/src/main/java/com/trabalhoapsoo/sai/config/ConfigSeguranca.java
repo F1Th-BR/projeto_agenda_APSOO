@@ -21,7 +21,14 @@ import org.springframework.security.oauth2.jwt.JwtDecoder;
 import org.springframework.security.oauth2.jwt.JwtEncoder;
 import org.springframework.security.oauth2.jwt.NimbusJwtDecoder;
 import org.springframework.security.oauth2.jwt.NimbusJwtEncoder;
+import org.springframework.security.core.GrantedAuthority;
+import org.springframework.security.core.authority.SimpleGrantedAuthority;
+import org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationConverter;
 import org.springframework.security.web.SecurityFilterChain;
+import org.springframework.web.cors.CorsConfiguration;
+import org.springframework.web.cors.CorsConfigurationSource;
+import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
+import java.util.List;
 
 
 /**
@@ -57,13 +64,19 @@ public class ConfigSeguranca {
     public SecurityFilterChain filtroDeSeguranca(HttpSecurity http) throws Exception{
         http
             // CSRF protege sessões em cookie; com token no cabeçalho não é necessário
+            .cors(Customizer.withDefaults())
             .csrf(csrf -> csrf.disable())
             .sessionManagement(s -> s.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
             .authorizeHttpRequests(a -> a
-                .requestMatchers("/auth/**", "/publico/**", "/webhooks/**").permitAll()
-                .anyRequest().authenticated())
+                .requestMatchers("/auth/**", "/publico/**", "/webhooks/**", "/error").permitAll()
+                // Cada tipo de conta só acessa as próprias rotas (RNF007)
+                .requestMatchers("/empresa/**").hasRole("EMPRESA")
+                .requestMatchers("/cliente/**").hasRole("CLIENTE")
+                .requestMatchers("/perfil/**", "/procedimentos/**", "/disponibilidades/**", "/bloqueios/**",
+                                 "/agendamentos/**", "/vinculos/**").hasRole("PROFISSIONAL")
+                .anyRequest().denyAll())
             // Valida o token JWT recebido no cabeçalho Authorization: Bearer
-            .oauth2ResourceServer(o -> o.jwt(Customizer.withDefaults()));
+            .oauth2ResourceServer(o -> o.jwt(j -> j.jwtAuthenticationConverter(conversorDeToken())));
         return http.build();
     }
 
@@ -109,5 +122,39 @@ public class ConfigSeguranca {
     @Bean
     public JwtDecoder decodificadorJwt(SecretKey chave) {
         return NimbusJwtDecoder.withSecretKey(chave).macAlgorithm(MacAlgorithm.HS256).build();
+    }
+
+    /**
+     * Converte o token em permissões: a claim 'tipo' (PROFISSIONAL, EMPRESA ou
+     * CLIENTE) vira a permissão ROLE_<tipo>. Tokens sem 'tipo' (gerados antes desta
+     * versão) não têm acesso — basta fazer login de novo.
+     * 
+     * @return conversor de token
+     */
+    private JwtAuthenticationConverter conversorDeToken() {
+        JwtAuthenticationConverter conversor = new JwtAuthenticationConverter();
+        conversor.setJwtGrantedAuthoritiesConverter(jwt -> {
+            String tipo = jwt.getClaimAsString("tipo");
+            return tipo == null ? List.<GrantedAuthority>of() : List.<GrantedAuthority>of(new SimpleGrantedAuthority("ROLE_" + tipo));
+        });
+        return conversor;
+    }
+
+    /**
+     * Libera o acesso do front-end (outra porta/endereço) à API (CORS).
+     * As origens permitidas vêm de 'app.cors.origens' (separadas por vírgula).
+     * 
+     * @param origens origens permitidas
+     * @return configuração de CORS
+     */
+    @Bean
+    public CorsConfigurationSource configuracaoCors(@Value("${app.cors.origens:http://localhost:3000,http://localhost:5173}") List<String> origens) {
+        CorsConfiguration c = new CorsConfiguration();
+        c.setAllowedOrigins(origens);
+        c.setAllowedMethods(List.of("GET", "POST", "PUT", "DELETE", "OPTIONS"));
+        c.setAllowedHeaders(List.of("Authorization", "Content-Type"));
+        UrlBasedCorsConfigurationSource fonte = new UrlBasedCorsConfigurationSource();
+        fonte.registerCorsConfiguration("/**", c);
+        return fonte;
     }
 } // ConfigSeguranca

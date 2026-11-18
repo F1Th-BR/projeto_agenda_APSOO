@@ -7,8 +7,11 @@ import java.util.List;
 import com.trabalhoapsoo.sai.exceptions.ConflitoException;
 import com.trabalhoapsoo.sai.exceptions.RecursoNaoEncontradoException;
 import com.trabalhoapsoo.sai.exceptions.RequisicaoInvalidaException;
+import com.trabalhoapsoo.sai.model.Agendamento;
+import com.trabalhoapsoo.sai.model.AtorAgendamento;
 import com.trabalhoapsoo.sai.model.Bloqueio;
 import com.trabalhoapsoo.sai.model.Profissional;
+import com.trabalhoapsoo.sai.notificacao.NotificadorAgendamento;
 import com.trabalhoapsoo.sai.repository.AgendamentoRepository;
 import com.trabalhoapsoo.sai.repository.BloqueioRepository;
 import com.trabalhoapsoo.sai.repository.ProfissionalRepository;
@@ -32,6 +35,7 @@ public class ServicosBloqueio {
     private final ProfissionalRepository profissionalRepository; // para localizar o dono
     private final AgendamentoRepository agendamentoRepository; // para checar agendamentos no período
     private final Clock relogio; // fornece o "agora" no fuso do sistema
+    private final NotificadorAgendamento notificador; // avisa as clientes dos cancelamentos (RN07)
 
     /* ===== MÉTODOS ===== */
     /**
@@ -43,11 +47,13 @@ public class ServicosBloqueio {
      * @param relogio relógio do sistema
      */
     public ServicosBloqueio(BloqueioRepository repository, ProfissionalRepository profissionalRepository,
-                            AgendamentoRepository agendamentoRepository, Clock relogio) {
+                            AgendamentoRepository agendamentoRepository, Clock relogio,
+                            NotificadorAgendamento notificador) {
         this.repository = repository;
         this.profissionalRepository = profissionalRepository;
         this.agendamentoRepository = agendamentoRepository;
         this.relogio = relogio;
+        this.notificador = notificador;
     }
 
     /**
@@ -62,7 +68,8 @@ public class ServicosBloqueio {
      * @throws ConflitoException se houver agendamentos ativos no período
      */
     @Transactional
-    public Bloqueio criar(Long profissionalId, LocalDateTime inicio, LocalDateTime fim, String motivo) {
+    public Bloqueio criar(Long profissionalId, LocalDateTime inicio, LocalDateTime fim, String motivo,
+                          boolean cancelarAgendamentos) {
         if (!fim.isAfter(inicio)) {
             throw new RequisicaoInvalidaException("O fim do bloqueio deve ser depois do início.");
         }
@@ -72,8 +79,18 @@ public class ServicosBloqueio {
 
         // Não bloqueia um período que já tem clientes marcadas: o(a) profissional
         // precisa cancelar esses agendamentos antes, para ninguém ser pega de surpresa
-        if (agendamentoRepository.contarAtivosNoPeriodo(profissionalId, inicio, fim) > 0) {
-            throw new ConflitoException("Existem agendamentos nesse período. Cancele-os antes de bloquear.");
+        List<Agendamento> conflitantes = agendamentoRepository.buscarAtivosNoPeriodo(profissionalId, inicio, fim);
+        if (!conflitantes.isEmpty()) {
+            if (!cancelarAgendamentos) {
+                throw new ConflitoException("Existem " + conflitantes.size() + " agendamento(s) nesse período. "
+                    + "Cancele-os ou repita com cancelarAgendamentos=true para cancelá-los e avisar as clientes.");
+            }
+            // UC002 (5.1) / RN07: cancela os agendamentos do período e avisa as clientes
+            LocalDateTime agora = LocalDateTime.now(relogio);
+            for (Agendamento a : conflitantes) {
+                a.cancelar(AtorAgendamento.PROFISSIONAL, agora);
+                notificador.agendamentoCancelado(agendamentoRepository.saveAndFlush(a));
+            }
         }
 
         Profissional profissional = profissionalRepository.findById(profissionalId)

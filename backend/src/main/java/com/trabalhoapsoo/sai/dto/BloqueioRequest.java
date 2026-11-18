@@ -22,6 +22,9 @@ public record BloqueioRequest(
     LocalDateTime fim,
 
     @Size(max = 255, message = "O motivo deve ter no máximo 255 caracteres.")
-    String motivo
+    String motivo,
+
+    // Opcional (padrão false): cancela os agendamentos que estiverem dentro do período bloqueado
+    Boolean cancelarAgendamentos
 ) {
 } // BloqueioRequest

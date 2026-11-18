@@ -1,6 +1,8 @@
 package com.trabalhoapsoo.sai.service;
 
+import java.time.Clock;
 import java.time.DayOfWeek;
+import java.time.LocalDateTime;
 import java.time.LocalTime;
 import java.util.Comparator;
 import java.util.List;
@@ -10,6 +12,7 @@ import com.trabalhoapsoo.sai.exceptions.RecursoNaoEncontradoException;
 import com.trabalhoapsoo.sai.exceptions.RequisicaoInvalidaException;
 import com.trabalhoapsoo.sai.model.Disponibilidade;
 import com.trabalhoapsoo.sai.model.Profissional;
+import com.trabalhoapsoo.sai.repository.AgendamentoRepository;
 import com.trabalhoapsoo.sai.repository.DisponibilidadeRepository;
 import com.trabalhoapsoo.sai.repository.ProfissionalRepository;
 
@@ -30,6 +33,8 @@ public class ServicosDisponibilidade {
     /* ===== ATRIBUTOS ===== */
     private final DisponibilidadeRepository repository; // acesso à tabela 'disponibilidade'
     private final ProfissionalRepository profissionalRepository; // para localizar o dono
+    private final AgendamentoRepository agendamentoRepository; // para avisar de agendamentos futuros (UC002)
+    private final Clock relogio;
 
     /* ===== MÉTODOS ===== */
     /**
@@ -37,10 +42,15 @@ public class ServicosDisponibilidade {
      * 
      * @param repository repositório de disponibilidades
      * @param profissionalRepository repositório de profissionais
+     * @param agendamentoRepository repositório de agendamentos
+     * @param relogio relógio do sistema
      */
-    public ServicosDisponibilidade(DisponibilidadeRepository repository, ProfissionalRepository profissionalRepository) {
+    public ServicosDisponibilidade(DisponibilidadeRepository repository, ProfissionalRepository profissionalRepository,
+                                   AgendamentoRepository agendamentoRepository, Clock relogio) {
         this.repository = repository;
         this.profissionalRepository = profissionalRepository;
+        this.agendamentoRepository = agendamentoRepository;
+        this.relogio = relogio;
     }
 
     /**
@@ -99,12 +109,24 @@ public class ServicosDisponibilidade {
      * @throws RecursoNaoEncontradoException se não existir ou for de outro(a) profissional
      */
     @Transactional
-    public void remover(Long profissionalId, Long id) {
+    public void remover(Long profissionalId, Long id, boolean confirmar) {
         Disponibilidade d = repository.findById(id)
             .orElseThrow(() -> new RecursoNaoEncontradoException("Disponibilidade não encontrada: " + id));
         // Se for de outro(a) profissional, responde "não encontrada" para não revelar que existe
         if (!d.getProfissional().getId().equals(profissionalId)) {
             throw new RecursoNaoEncontradoException("Disponibilidade não encontrada: " + id);
+        }
+
+        // UC002 (3.1): se ainda há agendamentos futuros nesse intervalo, avisa antes de remover.
+        // Com confirmar=true a remoção segue e os agendamentos já feitos continuam valendo.
+        long afetados = agendamentoRepository.listarAtivosAPartirDe(profissionalId, LocalDateTime.now(relogio)).stream()
+            .filter(a -> a.getInicioAgendamento().getDayOfWeek() == d.getDiaSemana()
+                && !a.getInicioAgendamento().toLocalTime().isBefore(d.getHoraInicio())
+                && a.getInicioAgendamento().toLocalTime().isBefore(d.getHoraFim()))
+            .count();
+        if (afetados > 0 && !confirmar) {
+            throw new ConflitoException("Existem " + afetados + " agendamento(s) futuro(s) neste horário. "
+                + "Cancele-os ou repita a remoção com confirmar=true para manter os agendamentos já feitos.");
         }
         repository.delete(d);
     }

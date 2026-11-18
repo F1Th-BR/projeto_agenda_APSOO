@@ -29,4 +29,12 @@ public interface ProfissionalRepository extends JpaRepository<Profissional, Long
      */
     boolean existsByEmail(String email);
 
+    /**
+     * Busca um(a) profissional pelo código do link público de agendamento (RF027).
+     * 
+     * @param linkPublico código que aparece na URL de agendamento
+     * @return profissional encontrado, ou vazio se o link não existir
+     */
+    Optional<Profissional> findByLinkPublico(String linkPublico);
+
 } // ProfissionalRepository

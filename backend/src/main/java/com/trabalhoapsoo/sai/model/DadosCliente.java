@@ -18,7 +18,7 @@ import jakarta.persistence.Embeddable;
 public class DadosCliente {
     /* ===== ATRIBUTOS ===== */
     @Column (name = "nome_cliente", nullable = false)
-    private String nome_cliente;
+    private String nomeCliente;
 
     @Column (name = "telefone_cliente", nullable = false)
     private String telefone;
@@ -30,34 +30,31 @@ public class DadosCliente {
     /**
      * Construtor da classe
      * 
-     * @param nome_cliente nome do cliente
-     * @param telefone_cliente telefone do cliente
+     * @param nomeCliente nome do cliente
+     * @param telefoneCliente telefone do cliente
      */
-    public DadosCliente(String nome_cliente, String telefone_cliente) {
-        this.nome_cliente = nome_cliente;
-        this.telefone = telefone_cliente;
+    public DadosCliente(String nomeCliente, String telefoneCliente) {
+        this.nomeCliente = nomeCliente;
+        this.telefone = telefoneCliente;
     }
 
     /* ===== GETTERS & SETTERS ===== */
     /**
      * Método parar retornar o nome do cliente
      * 
-     * @return
+     * @return nome do cliente
      */
-    public String getNome_cliente() {
-        return nome_cliente;
+    public String getNomeCliente() {
+        return nomeCliente;
     }
 
     /**
      * Método para retornar o telefone do cliente
      * 
-     * @return
+     * @return telefone do cliente
      */
     public String getTelefone() {
         return telefone;
     }
-
-
-
 
 } // DadosCliente

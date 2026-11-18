@@ -2,6 +2,8 @@ package com.trabalhoapsoo.sai.model;
 
 import java.time.Duration;
 import java.time.LocalDateTime;
+import java.util.Objects;
+import java.util.UUID;
 
 import jakarta.persistence.Column;
 import jakarta.persistence.Embedded;
@@ -49,33 +51,138 @@ public class Agendamento {
     @Column (name = "status",nullable = false)
     private EstadoAgendamento estado;
 
+    // Código do link único que a cliente recebe para remarcar e cancelar
+    // sem precisar de login (RF036, RF037). Aleatório e impossível de adivinhar
+    @Column (nullable = false, unique = true, updatable = false)
+    private String tokenCliente;
+
+    // Conta da cliente, se ela estava logada ao agendar (RF026). Nulo = sem login
+    @ManyToOne
+    @JoinColumn (name = "conta_cliente_id")
+    private ContaCliente contaCliente;
+
+    // Empresa que criou o agendamento (RF021/RF022). Nulo = não foi criado por empresa
+    @ManyToOne
+    @JoinColumn (name = "empresa_id")
+    private Empresa empresa;
+
+    /* ----- Auditoria (RF045) ----- */
+    @Enumerated (EnumType.STRING)
+    @Column (nullable = false)
+    private AtorAgendamento origem; // quem criou o agendamento
+
+    @Column (nullable = false)
+    private LocalDateTime criadoEm;
+
+    @Enumerated (EnumType.STRING)
+    private AtorAgendamento remarcadoPor; // nulo se nunca foi remarcado
+
+    private LocalDateTime remarcadoEm;
+
+    @Enumerated (EnumType.STRING)
+    private AtorAgendamento canceladoPor; // nulo se não foi cancelado
+
+    private LocalDateTime canceladoEm;
+
     /* ===== MÉTODOS ===== */
     /** Construtor vazio exigido pelo Hibernate */
     protected Agendamento() {}
 
     /**
-     * Construtor da classe.
+     * Construtor da classe. O horário de término é calculado a partir da
+     * duração do procedimento, e o profissional é o dono do procedimento.
      * 
-     * 
-     * @param nomeCliente 
-     * @param telefoneCliente
-     * @param profissional 
-     * @param procedimento
+     * @param nomeCliente nome da cliente
+     * @param telefoneCliente telefone/WhatsApp da cliente
+     * @param procedimento procedimento a ser realizado
+     * @param inicioAgendamento data e hora de início
+     * @param origem quem está criando o agendamento
+     * @param agora momento da criação (usado na auditoria)
+     * @throws NullPointerException se algum dos parâmetros for nulo
      */
-    public Agendamento(String nomeCliente, String telefoneCliente, Procedimento procedimento, LocalDateTime inicioAgendamento) {
+    public Agendamento(String nomeCliente, String telefoneCliente, Procedimento procedimento,
+                       LocalDateTime inicioAgendamento, AtorAgendamento origem, LocalDateTime agora) {
+        Objects.requireNonNull(nomeCliente, "nomeCliente");
+        Objects.requireNonNull(telefoneCliente, "telefoneCliente");
+        Objects.requireNonNull(procedimento, "procedimento");
+        Objects.requireNonNull(inicioAgendamento, "inicioAgendamento");
+        Objects.requireNonNull(origem, "origem");
+        Objects.requireNonNull(agora, "agora");
+
         this.cliente = new DadosCliente(nomeCliente, telefoneCliente);
         this.procedimento = procedimento;
         this.profissional = procedimento.getProfissional();
         this.inicioAgendamento = inicioAgendamento;
         this.fimAgendamento = inicioAgendamento.plus(procedimento.getDuracaoProcedimento());
         this.estado = EstadoAgendamento.AGENDADO;
+        this.tokenCliente = UUID.randomUUID().toString();
+        this.origem = origem;
+        this.criadoEm = agora;
+    }
+
+    /**
+     * Associa o agendamento à conta da cliente (RF026).
+     * 
+     * @param contaCliente conta da cliente logada
+     */
+    public void vincularConta(ContaCliente contaCliente) {
+        this.contaCliente = contaCliente;
+    }
+
+    /**
+     * Associa o agendamento à empresa que o criou (RF021).
+     * 
+     * @param empresa empresa que agendou
+     */
+    public void vincularEmpresa(Empresa empresa) {
+        this.empresa = empresa;
+    }
+
+    /* ===== OPERAÇÕES ===== */
+    /**
+     * Cancela o agendamento e registra quem cancelou e quando.
+     * O horário é liberado automaticamente, pois o banco só considera
+     * agendamentos com estado AGENDADO (RF049).
+     * 
+     * @param ator quem está cancelando
+     * @param agora momento do cancelamento
+     * @throws IllegalStateException se o agendamento já estiver cancelado
+     */
+    public void cancelar(AtorAgendamento ator, LocalDateTime agora) {
+        if (estado == EstadoAgendamento.CANCELADO) {
+            throw new IllegalStateException("O agendamento já está cancelado.");
+        }
+        this.estado = EstadoAgendamento.CANCELADO;
+        this.canceladoPor = Objects.requireNonNull(ator, "ator");
+        this.canceladoEm = Objects.requireNonNull(agora, "agora");
+    }
+
+    /**
+     * Move o agendamento para um novo horário e registra quem remarcou e
+     * quando. A duração original do agendamento é mantida, mesmo que o
+     * procedimento tenha sido alterado depois.
+     * 
+     * @param novoInicio novo horário de início
+     * @param ator quem está remarcando
+     * @param agora momento da remarcação
+     * @throws IllegalStateException se o agendamento estiver cancelado
+     */
+    public void remarcar(LocalDateTime novoInicio, AtorAgendamento ator, LocalDateTime agora) {
+        if (estado == EstadoAgendamento.CANCELADO) {
+            throw new IllegalStateException("Não é possível remarcar um agendamento cancelado.");
+        }
+        Duration duracao = getDuracaoAgendamento();
+        this.inicioAgendamento = Objects.requireNonNull(novoInicio, "novoInicio");
+        this.fimAgendamento = novoInicio.plus(duracao);
+        this.remarcadoPor = Objects.requireNonNull(ator, "ator");
+        this.remarcadoEm = Objects.requireNonNull(agora, "agora");
     }
 
     /* ===== GETTERS & SETTERS ===== */
     /**
      * Método para obter o id do agendamento
      * 
-     * @return
+     * @return id do agendamento
      */
     public Long getId() {
         return id;
@@ -84,7 +191,7 @@ public class Agendamento {
     /**
      * Método para obter o início do agendamento
      * 
-     * @return
+     * @return data e hora de início
      */
     public LocalDateTime getInicioAgendamento() {
         return inicioAgendamento;
@@ -93,7 +200,7 @@ public class Agendamento {
     /**
      * Método para obter o fim do agendamento
      * 
-     * @return
+     * @return data e hora de término
      */
     public LocalDateTime getFimAgendamento() {
         return fimAgendamento;
@@ -102,16 +209,16 @@ public class Agendamento {
     /**
      * Método para obter o nome do(a) cliente
      * 
-     * @return
+     * @return nome do(a) cliente
      */
     public String getNomeCliente() {
-        return cliente.getNome_cliente();
+        return cliente.getNomeCliente();
     }
 
     /**
      * Método para obter o nº de telefone do cliente
      * 
-     * @return
+     * @return telefone do cliente
      */
     public String getTelefoneCliente() {
         return cliente.getTelefone();
@@ -120,7 +227,7 @@ public class Agendamento {
     /**
      * Método para obter o procedimento a ser realizado
      * 
-     * @return
+     * @return procedimento
      */
     public Procedimento getProcedimento() {
         return procedimento;
@@ -138,10 +245,91 @@ public class Agendamento {
     /**
      * Método para obter o estado do agendamento
      * 
-     * @return
+     * @return estado do agendamento
      */
     public EstadoAgendamento getEstado() {
         return estado;
+    }
+
+    /**
+     * Método para obter o código do link único da cliente
+     * 
+     * @return código do link único
+     */
+    public String getTokenCliente() {
+        return tokenCliente;
+    }
+
+    /**
+     * Método para obter a conta da cliente
+     * 
+     * @return conta da cliente, ou nulo se agendou sem login
+     */
+    public ContaCliente getContaCliente() {
+        return contaCliente;
+    }
+
+    /**
+     * Método para obter a empresa que criou o agendamento
+     * 
+     * @return empresa, ou nulo se não foi criado por empresa
+     */
+    public Empresa getEmpresa() {
+        return empresa;
+    }
+
+    /**
+     * Método para obter quem criou o agendamento
+     * 
+     * @return origem do agendamento
+     */
+    public AtorAgendamento getOrigem() {
+        return origem;
+    }
+
+    /**
+     * Método para obter o momento em que o agendamento foi criado
+     * 
+     * @return data e hora da criação
+     */
+    public LocalDateTime getCriadoEm() {
+        return criadoEm;
+    }
+
+    /**
+     * Método para obter quem remarcou o agendamento
+     * 
+     * @return quem remarcou, ou nulo se nunca foi remarcado
+     */
+    public AtorAgendamento getRemarcadoPor() {
+        return remarcadoPor;
+    }
+
+    /**
+     * Método para obter o momento da última remarcação
+     * 
+     * @return data e hora da remarcação, ou nulo
+     */
+    public LocalDateTime getRemarcadoEm() {
+        return remarcadoEm;
+    }
+
+    /**
+     * Método para obter quem cancelou o agendamento
+     * 
+     * @return quem cancelou, ou nulo se não foi cancelado
+     */
+    public AtorAgendamento getCanceladoPor() {
+        return canceladoPor;
+    }
+
+    /**
+     * Método para obter o momento do cancelamento
+     * 
+     * @return data e hora do cancelamento, ou nulo
+     */
+    public LocalDateTime getCanceladoEm() {
+        return canceladoEm;
     }
 
     /* ===== MÉTODOS AUXILIARES ===== */
@@ -157,9 +345,8 @@ public class Agendamento {
      * 
      * @return duração do agendamento
      */
-    public Duration getduracaoAgendamento() {
+    public Duration getDuracaoAgendamento() {
         return Duration.between(inicioAgendamento, fimAgendamento);
     }
-
 
 } // Agendamento
